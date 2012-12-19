@@ -1,0 +1,15 @@
+Package: gpRepel
+Version: 0.0.1
+Date: 2011-05-20
+Title: Basic R functions for GPU computation with nvidia thrust
+Author: Piotr Wasiewicz <pwasiewi@gmail.com>
+Maintainer: Piotr Wasiewicz <pwasiewi@gmail.com>
+Depends: R (>= 2.8.0)
+SystemRequirements: NVIDIA CUDA Toolkit 4.0 or above
+Description: This package provides basic R functions 
+	made with a help of nvidia thrust for 
+	GPU computation. The implementation is based on the 
+        NVIDIA CUDA Toolkit 4.0. 
+License: GPL-3
+URL: http://staff.elka.pw.edu.pl/~pwasiewi
+

@@ -1,0 +1,22 @@
+useDynLib(gpRepel)
+
+export(
+    gpRPeakmask,
+    gpRPeak2mask,
+    peaks2one,
+    gpRPremave,
+    gpRPostmave,
+    gpRDiff,
+    gpRDiffrev,
+    gpRAvgall,
+    gpRSdall,
+    gpRUp,
+    gpRDown,
+    gpRBasavoff,
+    gpRBasoroff,
+    gpRMoverage,
+    gpRMovemax,
+    gpRMeanmax
+    )
+     
+     
