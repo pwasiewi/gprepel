@@ -1,0 +1,2 @@
+gpRepel
+This package provides basic R functions made with a help of nvidia thrust for GPU computation in linux environment. The implementation is based on the NVIDIA CUDA Toolkit.

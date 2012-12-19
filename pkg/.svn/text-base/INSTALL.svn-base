@@ -1,0 +1,20 @@
+gpRepel
+====
+
+Currently, only Linux install is supported for gpRepel. Here are the 
+Linux installation steps:
+
+1) Install NVIDIA CUDA Toolkit on your Linux system. Instruction for 
+   Fedora Linux can be found at:
+
+     http://www.r-tutor.com/gpu-computing/cuda-installation
+     
+2) Export the following environment variable in .bashrc:
+
+     export R_LIBS_USER="<path of some folder in your home directory>"
+
+3) Then enter the following:
+
+     R CMD INSTALL gpRepel_<version>.tar.gz
+     
+     
