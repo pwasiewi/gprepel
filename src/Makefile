@@ -3,7 +3,7 @@ EXT := cu
 OBJS := gprepel.o
 
 #compiler/preprocessor options
-INCS := -I/opt/cuda/include -arch sm_21
+INCS := -I/opt/cuda/include -arch sm_11
 PARAMS := -Xcompiler "-I/usr/lib64/R/include -fpic"
 
 #linker options
