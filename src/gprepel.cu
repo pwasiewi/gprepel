@@ -202,7 +202,25 @@ void gprpremave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric po
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// double_moving_average - host-gpu function for the gpu average of two moving averages with windows 
+// plus_and_divide - a gpu functor of two arguments added and divided by a constant
+//
+template <typename T>
+struct plus_and_divide : public thrust::binary_function<T,T,T>
+{
+    T w;
+
+    __host__ __device__
+    plus_and_divide(T w) : w(w) {}
+
+    __host__ __device__
+    T operator()(const T& a, const T& b) const
+    {
+        return (a + b) / w;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// double_moving_average - gpu function for the gpu average of two moving averages with windows 
 // after and before the given point, joint of two simple_moving_average (one on a reversed copy)
 template <typename InputVector, typename OutputVector>
 void double_moving_average(size_t m, size_t n, const InputVector& igva, size_t w, OutputVector& gvd)
@@ -402,20 +420,6 @@ struct is_greater_than
    }
 };
 
-template <typename T>
-struct plus_and_divide : public thrust::binary_function<T,T,T>
-{
-    T w;
-
-    __host__ __device__
-    plus_and_divide(T w) : w(w) {}
-
-    __host__ __device__
-    T operator()(const T& a, const T& b) const
-    {
-        return (a + b) / w;
-    }
-};
 
 template <typename T>
 struct minus_and_divide : public thrust::binary_function<T,T,T>
