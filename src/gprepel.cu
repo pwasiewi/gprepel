@@ -397,6 +397,45 @@ void gprup(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout) 
 }
 
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// onedown - the gpu functor from constant value the wave substraction, 
+// where negative values are set to 0
+//
+template <typename T>
+struct onedown : public thrust::unary_function<T,T>
+{
+    T w;
+	__host__ __device__
+    onedown(T w) : w(w) {}
+
+    __host__ __device__
+    T operator()(const T& a) const
+    {
+    	if(a >= w)
+    		return 0;
+    	else
+    		return w-a;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprdown - host-gpu function for a horizontal line and one wave substraction 
+// (negative values are set to 0)
+// 
+void gprdown(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout) {
+	Numeric w1 = win1[0];
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), onedown<Numeric>(Numeric(w1)));
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
+
 template <typename T>
 struct is_less_than_zero
 {
@@ -538,39 +577,7 @@ void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
 
 
 
-template <typename T>
-struct onedown : public thrust::unary_function<T,T>
-{
-    T w;
-	__host__ __device__
-    onedown(T w) : w(w) {}
 
-    __host__ __device__
-    T operator()(const T& a) const
-    {
-    	if(a >= w)
-    		return 0;
-    	else
-    		return w-a;
-    }
-};
-
-
-
-//template <typename T>
-void gprdown(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout) {
-	Numeric w1 = win1[0];
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), onedown<Numeric>(Numeric(w1)));
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-}
 
 template<typename T>
 struct  minus_by: public thrust::unary_function<T,T>
