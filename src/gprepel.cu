@@ -202,6 +202,29 @@ void gprpremave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric po
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// double_moving_average - host-gpu function for the gpu average of two moving averages with windows 
+// after and before the given point, joint of two simple_moving_average (one on a reversed copy)
+template <typename InputVector, typename OutputVector>
+void double_moving_average(size_t m, size_t n, const InputVector& igva, size_t w, OutputVector& gvd)
+{
+    typedef typename InputVector::value_type T;
+    if (igva.size() < w)
+        return;
+
+    thrust::device_vector<T> gva(igva.size());
+    thrust::device_vector<T> gvb(igva.size());
+    thrust::device_vector<T> gvc(igva.size());
+    thrust::copy(igva.begin(), igva.end(), gva.begin());
+
+    simple_moving_average(m,n,gva, w, gvb);
+    thrust::reverse(gva.begin(), gva.end());
+    simple_moving_average(m,n,gva, w, gvc);
+    thrust::reverse(gvc.begin(), gvc.end());
+    thrust::reverse(gva.begin(), gva.end());
+    thrust::transform(gvc.begin(), gvc.end(), gvb.begin(), gvd.begin(), plus_and_divide<T>(T(2)));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // gprpremave - host-gpu function for the gpu average of two moving averages with windows 
 // after and before the given point, joint of gprpremave and gprpostmave
 // pint, pout - input and output matrices with a (rows) x b (cols) dimensions
@@ -508,29 +531,6 @@ void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
 }
 
 
-
-
-
-
-template <typename InputVector, typename OutputVector>
-void double_moving_average(size_t m, size_t n, const InputVector& igva, size_t w, OutputVector& gvd)
-{
-    typedef typename InputVector::value_type T;
-    if (igva.size() < w)
-        return;
-
-    thrust::device_vector<T> gva(igva.size());
-    thrust::device_vector<T> gvb(igva.size());
-    thrust::device_vector<T> gvc(igva.size());
-    thrust::copy(igva.begin(), igva.end(), gva.begin());
-
-    simple_moving_average(m,n,gva, w, gvb);
-    thrust::reverse(gva.begin(), gva.end());
-    simple_moving_average(m,n,gva, w, gvc);
-    thrust::reverse(gvc.begin(), gvc.end());
-    thrust::reverse(gva.begin(), gva.end());
-    thrust::transform(gvc.begin(), gvc.end(), gvb.begin(), gvd.begin(), plus_and_divide<T>(T(2)));
-}
 
 
 
