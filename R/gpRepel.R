@@ -293,7 +293,8 @@ gpRAvgall <- function(points) {
 }
 
 ############################################################################
-# gpRMovemax
+# gpRMovemax - host-gpu function for finding a global maximum horizontal 
+# line for each vector
 #
 gpRMovemax <- function(points,w) {
 	
@@ -337,38 +338,6 @@ gpRMeanmax <- function(points,w) {
 			PACKAGE = pkg)$d
 	
 	return (matrix(d,num,dim))
-}
-
-
-#####################################################################
-# peaks2one
-#
-peaks2one<-function(wavg,wmask,wd=100){
-	nmask=c()
-	ppeaks=which(wmask==1)
-	if(length(ppeaks) >= 2){
-		pdiff<-ppeaks[2:length(ppeaks)]-ppeaks[1:length(ppeaks)-1]
-		if(length(which(pdiff<wd))>0){
-			pgood<-ppeaks[-c(which(pdiff<wd)+1)]
-			paval<-wavg[ppeaks]
-			if(pgood[length(pgood)]!=ppeaks[length(ppeaks)])
-				pbord=c(pgood[1:(length(pgood)-1)],ppeaks[length(ppeaks)])
-			else pbord=pgood
-			for(j in 2:length(pbord)){
-				ivec=c(pbord[j-1]:pbord[j])
-				if(j>2)	ivec=ivec[2:length(ivec)]
-				jvec=ivec[which(wmask[ivec]==1)]
-				wvec<-wavg[jvec]
-				nmask<-c(nmask,jvec[which(wvec==max(wvec))])
-			}
-			wmask[-nmask]=0
-			ppeaks=nmask
-			pdiff<-ppeaks[2:length(ppeaks)]-ppeaks[1:length(ppeaks)-1]
-			pgood<-ppeaks[-c(which(pdiff<wd)+1)]
-			wmask[-pgood]=0
-		}
-	}
-	wmask
 }
 
 
@@ -436,5 +405,36 @@ gpRPeak2mask <- function(points,w1=45,w2=250,w3=15,wgap=100) {
 	for(i in 1:dim)	pmask[,i]<-peaks2one(pavg[,i],pmask[,i],wgap)
 	for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
 	return (list(pmask=pmask, pavg=pavg, dmask=dmask, davg=davg))
+}
+
+#####################################################################
+# peaks2one
+#
+peaks2one<-function(wavg,wmask,wd=100){
+	nmask=c()
+	ppeaks=which(wmask==1)
+	if(length(ppeaks) >= 2){
+		pdiff<-ppeaks[2:length(ppeaks)]-ppeaks[1:length(ppeaks)-1]
+		if(length(which(pdiff<wd))>0){
+			pgood<-ppeaks[-c(which(pdiff<wd)+1)]
+			paval<-wavg[ppeaks]
+			if(pgood[length(pgood)]!=ppeaks[length(ppeaks)])
+				pbord=c(pgood[1:(length(pgood)-1)],ppeaks[length(ppeaks)])
+			else pbord=pgood
+			for(j in 2:length(pbord)){
+				ivec=c(pbord[j-1]:pbord[j])
+				if(j>2)	ivec=ivec[2:length(ivec)]
+				jvec=ivec[which(wmask[ivec]==1)]
+				wvec<-wavg[jvec]
+				nmask<-c(nmask,jvec[which(wvec==max(wvec))])
+			}
+			wmask[-nmask]=0
+			ppeaks=nmask
+			pdiff<-ppeaks[2:length(ppeaks)]-ppeaks[1:length(ppeaks)-1]
+			pgood<-ppeaks[-c(which(pdiff<wd)+1)]
+			wmask[-pgood]=0
+		}
+	}
+	wmask
 }
 

@@ -55,7 +55,7 @@ struct VecReorder : public thrust::binary_function<Numeric2,Numeric2,Numeric>
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// minus_and_divide_zip - gpu functor implementing the dot product between 3d vectors
+// minus_and_divide_zip - the gpu functor implementing moving average in a point 
 //
 struct  minus_and_divide_zip : public thrust::binary_function<Numeric3,Numeric3,Numeric>
 {
@@ -507,7 +507,7 @@ struct kindcreate : public thrust::unary_function<Numeric,Numeric>
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// gprmovemax - host-gpu function for 
+// gprmovemax - host-gpu function for finding a global maximum horizontal line for each vector
 //
 void gprmovemax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
 
@@ -537,6 +537,345 @@ void gprmovemax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric p
 }
 
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// meanorig - gpu function for 
+//
+template <typename InputVector, typename OutputVector>
+void meanorig(size_t m, size_t n, const InputVector& gveca, OutputVector& vout)
+{
+    thrust::device_vector<Numeric> orgbasoff(m*n);
+
+    thrust::device_vector<Integer> vindex(m*n);
+    thrust::sequence(vindex.begin(),vindex.end(),0);
+    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
+    thrust::device_vector<Numeric> gvecb(m*n);
+//    thrust::device_vector<Numeric> gvecc(m*n);
+    thrust::device_vector<Numeric> gvecd(m*n);
+
+    double_moving_average(m,n,gveca, 150, gvecb);
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), orgbasoff.begin(), thrust::divides<Numeric>());
+    thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), oneup<Numeric>(Numeric(1)));
+
+    thrust::equal_to<Numeric> binary_pred;
+    thrust::maximum<Numeric>  binary_max;
+/*
+    thrust::device_vector<Numeric> avgbasoff(a[0]*b[0]);
+    double_moving_average(a[0],b[0],gveca, 150, gvecb);
+    double_moving_average(a[0],b[0],gveca,  80, gvecc);
+    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), avgbasoff.begin(), thrust::divides<Numeric>());
+    thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), oneup<Numeric>(Numeric(1)));
+
+
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), avgbasoff.begin(), gvecb.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecc.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecc.begin(), gvecc.end());
+*/
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoff.begin(), gvecb.begin(),binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecd.begin(), gvecd.end());
+    thrust::fill(gvecb.begin(),gvecb.end(),m);
+    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), vout.begin(), thrust::divides<Numeric>());
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprmeanmax - host-gpu function for 
+//
+void gprmeanmax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
+
+    // window size of the moving average
+    //int w = win1[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+    thrust::device_vector<Numeric> meanvec(a[0]*b[0]);
+
+    meanorig(a[0], b[0], gveca, meanvec);
+    // transfer data back to host
+    thrust::copy(meanvec.begin(), meanvec.end(), pout);
+    //thrust::copy(vindex.begin(), vindex.end(), pout);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// compare_zip - the gpu functor 
+//
+struct  compare_zip : public thrust::binary_function<Numeric2,Numeric2,Numeric>
+{
+     Numeric va,vb, da, db;
+
+    __host__ __device__
+    Numeric operator()(const Numeric2& a, const Numeric2& b) const
+    {
+		Numeric va=thrust::get<0>(a);
+		Numeric da=thrust::get<1>(a);
+		Numeric vb=thrust::get<0>(b);
+		Numeric db=thrust::get<1>(b);
+	    if(va > 0){
+	    	if(da > 0 && db <0){
+	    		return 1;
+	    	}
+	    	else
+	    		return 0;
+	    }
+	    else
+	    	return 0;
+     }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// zipup - the gpu functor 
+//
+struct  zipup : public thrust::unary_function<Numeric2,Numeric>
+{
+     Numeric va,da;
+
+    __host__ __device__
+    Numeric operator()(const Numeric2& a) const
+    {
+		Numeric va=thrust::get<0>(a);
+		Numeric da=thrust::get<1>(a);
+    	if(va <= da)
+    		return 0;
+    	else
+    		return va-da;
+     }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// find_maxpeaks - gpu function for 
+//
+template <typename InputVector, typename OutputVector>
+void find_maxpeaks(size_t m, size_t n, const InputVector& gveca, const Numeric& w1, const Numeric& w2, const Numeric& up, OutputVector& vout, OutputVector& avgbasoff, OutputVector& orgbasoff)
+{
+	//thrust::device_vector<Numeric> orgbasoff(m*n);
+
+    thrust::device_vector<Integer> vindex(m*n);
+    thrust::sequence(vindex.begin(),vindex.end(),0);
+    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
+    thrust::device_vector<Numeric> gvecb(m*n);
+    thrust::device_vector<Numeric> gvecc(m*n);
+    thrust::device_vector<Numeric> gvecd(m*n);
+
+    double_moving_average(m,n,gveca, w2, gvecb);
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), orgbasoff.begin(), thrust::divides<Numeric>());
+
+    if(up > 0)
+    	thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), oneup<Numeric>(Numeric(1)));
+    else
+    	thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), onedown<Numeric>(Numeric(1)));
+
+    thrust::equal_to<Numeric> binary_pred;
+    thrust::maximum<Numeric>  binary_max;
+
+    //thrust::device_vector<Numeric> avgbasoff(m*n);
+    double_moving_average(m,n,gveca, w2, gvecb);
+    double_moving_average(m,n,gveca, w1, gvecc);
+    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), avgbasoff.begin(), thrust::divides<Numeric>());
+    if(up > 0)
+    	thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), oneup<Numeric>(Numeric(1)));
+    else
+    	thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), onedown<Numeric>(Numeric(1)));
+
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoff.begin(), gvecb.begin(),binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecd.begin(), gvecd.end());
+    thrust::fill(gvecb.begin(),gvecb.end(),m);
+    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
+
+    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoff.begin(), gvecd.begin()));
+    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoff.end(),   gvecd.end()));
+
+    thrust::transform(first, last, gvecb.begin(), zipup());
+
+    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
+    double_moving_average(m,n,gvecc, 20, gvecd);
+
+    Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
+    Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
+    Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
+
+    thrust::transform(first0, last0, first1, vout.begin(), compare_zip());
+
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpeakmask - the host-gpu function for 
+//
+void gprpeakmask(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric up, PNumeric pout) {
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+    int w1 = win1[0];//difference window
+    int w2 = win2[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
+
+    find_maxpeaks(m,n,gveca,w1,w2,up[0],gvecb,gvecc,gvecd);
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+    thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
+    thrust::copy(gvecd.begin(), gvecd.end(), pout+2*m*n+1);
+}
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// upmask - the gpu functor 
+//
+struct  upmask : public thrust::unary_function<Numeric,Numeric>
+{
+	Numeric out;
+	__host__ __device__
+    upmask(Numeric out) : out(out) {}
+    __host__ __device__
+    Numeric operator()(const Numeric& a)
+    {
+    	if(a > 0){
+    		return out;
+    	}
+    	else
+    	{
+    		out=out+1;
+    		return 0;
+    	}
+     }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// find_doublemaxpeaks - a gpu function for 
+//
+template <typename InputVector, typename OutputVector>
+void find_doublemaxpeaks(size_t m, size_t n, const InputVector& gveca, const Numeric& w1, const Numeric& w2, const Numeric& w3, OutputVector& pout, OutputVector& avgbasoffp, OutputVector& dout, OutputVector& avgbasoffd)
+{
+	thrust::device_vector<Numeric> orgbasoffp(m*n);
+	thrust::device_vector<Numeric> orgbasoffd(m*n);
+
+    thrust::device_vector<Numeric> gvecb(m*n);
+    thrust::device_vector<Numeric> gvecc(m*n);
+
+    double_moving_average(m,n,gveca, w2, gvecb);
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), gvecc.begin(), thrust::divides<Numeric>());
+
+    thrust::transform(gvecc.begin(), gvecc.end(), orgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
+    thrust::transform(gvecc.begin(), gvecc.end(), orgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
+
+    thrust::equal_to<Numeric> binary_pred;
+    thrust::maximum<Numeric>  binary_max;
+
+    //thrust::device_vector<Numeric> avgbasoffp(m*n);
+    //thrust::device_vector<Numeric> avgbasoffd(m*n);
+    thrust::device_vector<Numeric> gvecd(m*n);
+    double_moving_average(m,n,gveca, w2, gvecb);
+    double_moving_average(m,n,gveca, w1, gvecc);
+    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
+
+    thrust::transform(gvecd.begin(), gvecd.end(), avgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
+    thrust::transform(gvecd.begin(), gvecd.end(), avgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
+
+    thrust::device_vector<Integer> vindex(m*n);
+    thrust::sequence(vindex.begin(),vindex.end(),0);
+    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
+
+
+    //orgbasoffp, avgbasoffp
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffp.begin(), gvecb.begin(), binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecd.begin(), gvecd.end());
+    thrust::fill(gvecb.begin(),gvecb.end(),m/(80/w1));
+    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
+
+    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.begin(), gvecd.begin()));
+    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.end(),   gvecd.end()));
+
+    thrust::transform(first, last, gvecb.begin(), zipup());
+
+    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
+    double_moving_average(m,n,gvecc, w3, gvecd);
+
+    Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
+    Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
+    Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
+
+    thrust::transform(first0, last0, first1, pout.begin(), compare_zip());
+
+    //orgbasoffd, avgbasoffd
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffd.begin(), gvecb.begin(), binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecd.begin(), gvecd.end());
+    thrust::fill(gvecb.begin(),gvecb.end(),m/(80/w1));
+    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
+
+    first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.begin(), gvecd.begin()));
+    last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.end(),   gvecd.end()));
+
+    thrust::transform(first, last, gvecb.begin(), zipup());
+
+    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
+    double_moving_average(m,n,gvecc, w3, gvecd);
+
+    first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
+    first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
+    last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
+
+    thrust::transform(first0, last0, first1, dout.begin(), compare_zip());
+    /*
+    thrust::transform(avgbasoffd.begin(), avgbasoffd.end(), avgbasoffd.begin(), upmask(Numeric(1)));
+    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), dout.begin(), gvecc.begin(),binary_pred,binary_max);
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::reverse(gvecc.begin(), gvecc.end());
+    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gvecc.begin(), avgbasoffd.begin(),binary_pred,binary_max);
+    thrust::reverse(avgbasoffd.begin(), avgbasoffd.end());
+    */
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpeak2mask - the host-gpu function for 
+//
+void gprpeak2mask(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric win3, PNumeric pout) {
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+    int w1 = win1[0];//window
+    int w2 = win2[0];//baseline window
+    int w3 = win3[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvece(a[0]*b[0]);
+
+    find_doublemaxpeaks(m,n,gveca,w1,w2,w3,gvecb,gvecc,gvecd,gvece);
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+    thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
+    thrust::copy(gvecd.begin(), gvecd.end(), pout+2*m*n+1);
+    thrust::copy(gvece.begin(), gvece.end(), pout+3*m*n+1);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// exemplary gpu functors
+//
 template <typename T>
 struct is_less_than_zero
 {
@@ -641,6 +980,10 @@ struct binary_index : public thrust::unary_function<size_t,size_t>
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// exemplary gpu functions
+//
+
 // transpose an M-by-N array
 template <typename T>
 void transpose(size_t m, size_t n, thrust::device_vector<T>& src, thrust::device_vector<T>& dst)
@@ -672,315 +1015,5 @@ template <typename T>
 void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
 {
     thrust::reduce(gvec.begin(), gvec.end(), out);
-}
-
-
-
-
-
-template <typename InputVector, typename OutputVector>
-void meanorig(size_t m, size_t n, const InputVector& gveca, OutputVector& vout)
-{
-    thrust::device_vector<Numeric> orgbasoff(m*n);
-
-    thrust::device_vector<Integer> vindex(m*n);
-    thrust::sequence(vindex.begin(),vindex.end(),0);
-    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
-    thrust::device_vector<Numeric> gvecb(m*n);
-//    thrust::device_vector<Numeric> gvecc(m*n);
-    thrust::device_vector<Numeric> gvecd(m*n);
-
-    double_moving_average(m,n,gveca, 150, gvecb);
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), orgbasoff.begin(), thrust::divides<Numeric>());
-    thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), oneup<Numeric>(Numeric(1)));
-
-    thrust::equal_to<Numeric> binary_pred;
-    thrust::maximum<Numeric>  binary_max;
- /*
-    thrust::device_vector<Numeric> avgbasoff(a[0]*b[0]);
-    double_moving_average(a[0],b[0],gveca, 150, gvecb);
-    double_moving_average(a[0],b[0],gveca,  80, gvecc);
-    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), avgbasoff.begin(), thrust::divides<Numeric>());
-    thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), oneup<Numeric>(Numeric(1)));
-
-
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), avgbasoff.begin(), gvecb.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecc.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecc.begin(), gvecc.end());
-*/
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoff.begin(), gvecb.begin(),binary_pred,thrust::plus<Numeric>());
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecd.begin(), gvecd.end());
-    thrust::fill(gvecb.begin(),gvecb.end(),m);
-    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), vout.begin(), thrust::divides<Numeric>());
-}
-
-
-void gprmeanmax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
-
-    // window size of the moving average
-    //int w = win1[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-    thrust::device_vector<Numeric> meanvec(a[0]*b[0]);
-
-    meanorig(a[0], b[0], gveca, meanvec);
-    // transfer data back to host
-    thrust::copy(meanvec.begin(), meanvec.end(), pout);
-    //thrust::copy(vindex.begin(), vindex.end(), pout);
-}
-
-
-// This functor implements the dot product between 3d vectors
-struct  compare_zip : public thrust::binary_function<Numeric2,Numeric2,Numeric>
-{
-     Numeric va,vb, da, db;
-
-    __host__ __device__
-    Numeric operator()(const Numeric2& a, const Numeric2& b) const
-    {
-		Numeric va=thrust::get<0>(a);
-		Numeric da=thrust::get<1>(a);
-		Numeric vb=thrust::get<0>(b);
-		Numeric db=thrust::get<1>(b);
-	    if(va > 0){
-	    	if(da > 0 && db <0){
-	    		return 1;
-	    	}
-	    	else
-	    		return 0;
-	    }
-	    else
-	    	return 0;
-     }
-};
-
-// This functor implements division
-struct  zipup : public thrust::unary_function<Numeric2,Numeric>
-{
-     Numeric va,da;
-
-    __host__ __device__
-    Numeric operator()(const Numeric2& a) const
-    {
-		Numeric va=thrust::get<0>(a);
-		Numeric da=thrust::get<1>(a);
-    	if(va <= da)
-    		return 0;
-    	else
-    		return va-da;
-     }
-};
-
-
-template <typename InputVector, typename OutputVector>
-void find_maxpeaks(size_t m, size_t n, const InputVector& gveca, const Numeric& w1, const Numeric& w2, const Numeric& up, OutputVector& vout, OutputVector& avgbasoff, OutputVector& orgbasoff)
-{
-	//thrust::device_vector<Numeric> orgbasoff(m*n);
-
-    thrust::device_vector<Integer> vindex(m*n);
-    thrust::sequence(vindex.begin(),vindex.end(),0);
-    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
-    thrust::device_vector<Numeric> gvecb(m*n);
-    thrust::device_vector<Numeric> gvecc(m*n);
-    thrust::device_vector<Numeric> gvecd(m*n);
-
-    double_moving_average(m,n,gveca, w2, gvecb);
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), orgbasoff.begin(), thrust::divides<Numeric>());
-
-    if(up > 0)
-    	thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), oneup<Numeric>(Numeric(1)));
-    else
-    	thrust::transform(orgbasoff.begin(), orgbasoff.end(), orgbasoff.begin(), onedown<Numeric>(Numeric(1)));
-
-    thrust::equal_to<Numeric> binary_pred;
-    thrust::maximum<Numeric>  binary_max;
-
-    //thrust::device_vector<Numeric> avgbasoff(m*n);
-    double_moving_average(m,n,gveca, w2, gvecb);
-    double_moving_average(m,n,gveca, w1, gvecc);
-    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), avgbasoff.begin(), thrust::divides<Numeric>());
-    if(up > 0)
-    	thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), oneup<Numeric>(Numeric(1)));
-    else
-    	thrust::transform(avgbasoff.begin(), avgbasoff.end(), avgbasoff.begin(), onedown<Numeric>(Numeric(1)));
-
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoff.begin(), gvecb.begin(),binary_pred,thrust::plus<Numeric>());
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecd.begin(), gvecd.end());
-    thrust::fill(gvecb.begin(),gvecb.end(),m);
-    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
-
-    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoff.begin(), gvecd.begin()));
-    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoff.end(),   gvecd.end()));
-
-    thrust::transform(first, last, gvecb.begin(), zipup());
-
-    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
-    double_moving_average(m,n,gvecc, 20, gvecd);
-
-    Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
-    Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
-    Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
-
-    thrust::transform(first0, last0, first1, vout.begin(), compare_zip());
-
-}
-
-//template <typename T>
-void gprpeakmask(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric up, PNumeric pout) {
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-    int w1 = win1[0];//difference window
-    int w2 = win2[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
-
-    find_maxpeaks(m,n,gveca,w1,w2,up[0],gvecb,gvecc,gvecd);
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-    thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
-    thrust::copy(gvecd.begin(), gvecd.end(), pout+2*m*n+1);
-}
-
-// This functor implements mask
-struct  upmask : public thrust::unary_function<Numeric,Numeric>
-{
-	Numeric out;
-	__host__ __device__
-    upmask(Numeric out) : out(out) {}
-    __host__ __device__
-    Numeric operator()(const Numeric& a)
-    {
-    	if(a > 0){
-    		return out;
-    	}
-    	else
-    	{
-    		out=out+1;
-    		return 0;
-    	}
-     }
-};
-
-
-template <typename InputVector, typename OutputVector>
-void find_doublemaxpeaks(size_t m, size_t n, const InputVector& gveca, const Numeric& w1, const Numeric& w2, const Numeric& w3, OutputVector& pout, OutputVector& avgbasoffp, OutputVector& dout, OutputVector& avgbasoffd)
-{
-	thrust::device_vector<Numeric> orgbasoffp(m*n);
-	thrust::device_vector<Numeric> orgbasoffd(m*n);
-
-    thrust::device_vector<Numeric> gvecb(m*n);
-    thrust::device_vector<Numeric> gvecc(m*n);
-
-    double_moving_average(m,n,gveca, w2, gvecb);
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), gvecc.begin(), thrust::divides<Numeric>());
-
-    thrust::transform(gvecc.begin(), gvecc.end(), orgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
-    thrust::transform(gvecc.begin(), gvecc.end(), orgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
-
-    thrust::equal_to<Numeric> binary_pred;
-    thrust::maximum<Numeric>  binary_max;
-
-    //thrust::device_vector<Numeric> avgbasoffp(m*n);
-    //thrust::device_vector<Numeric> avgbasoffd(m*n);
-    thrust::device_vector<Numeric> gvecd(m*n);
-    double_moving_average(m,n,gveca, w2, gvecb);
-    double_moving_average(m,n,gveca, w1, gvecc);
-    thrust::transform(gvecc.begin(), gvecc.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
-
-    thrust::transform(gvecd.begin(), gvecd.end(), avgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
-    thrust::transform(gvecd.begin(), gvecd.end(), avgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
-
-    thrust::device_vector<Integer> vindex(m*n);
-    thrust::sequence(vindex.begin(),vindex.end(),0);
-    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
-
-
-    //orgbasoffp, avgbasoffp
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffp.begin(), gvecb.begin(), binary_pred,thrust::plus<Numeric>());
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecd.begin(), gvecd.end());
-    thrust::fill(gvecb.begin(),gvecb.end(),m/(80/w1));
-    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
-
-    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.begin(), gvecd.begin()));
-    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.end(),   gvecd.end()));
-
-    thrust::transform(first, last, gvecb.begin(), zipup());
-
-    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
-    double_moving_average(m,n,gvecc, w3, gvecd);
-
-    Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
-    Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
-    Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
-
-    thrust::transform(first0, last0, first1, pout.begin(), compare_zip());
-
-    //orgbasoffd, avgbasoffd
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffd.begin(), gvecb.begin(), binary_pred,thrust::plus<Numeric>());
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), gvecb.begin(), gvecd.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecd.begin(), gvecd.end());
-    thrust::fill(gvecb.begin(),gvecb.end(),m/(80/w1));
-    thrust::transform(gvecd.begin(), gvecd.end(), gvecb.begin(), gvecd.begin(), thrust::divides<Numeric>());
-
-    first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.begin(), gvecd.begin()));
-    last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.end(),   gvecd.end()));
-
-    thrust::transform(first, last, gvecb.begin(), zipup());
-
-    thrust::transform(gvecb.begin()+1, gvecb.end(), gvecb.begin(), gvecc.begin(), thrust::minus<Numeric>());
-    double_moving_average(m,n,gvecc, w3, gvecd);
-
-    first0 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin(), gvecd.begin()));
-    first1 = thrust::make_zip_iterator(thrust::make_tuple(gvecb.begin() + 1, gvecd.begin() + 1));
-    last0  = thrust::make_zip_iterator(thrust::make_tuple(gvecb.end(),  gvecd.end()));
-
-    thrust::transform(first0, last0, first1, dout.begin(), compare_zip());
-    /*
-    thrust::transform(avgbasoffd.begin(), avgbasoffd.end(), avgbasoffd.begin(), upmask(Numeric(1)));
-    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), dout.begin(), gvecc.begin(),binary_pred,binary_max);
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::reverse(gvecc.begin(), gvecc.end());
-    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gvecc.begin(), avgbasoffd.begin(),binary_pred,binary_max);
-    thrust::reverse(avgbasoffd.begin(), avgbasoffd.end());
-    */
-}
-
-//template <typename T>
-void gprpeak2mask(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric win3, PNumeric pout) {
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-    int w1 = win1[0];//window
-    int w2 = win2[0];//baseline window
-    int w3 = win3[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvece(a[0]*b[0]);
-
-    find_doublemaxpeaks(m,n,gveca,w1,w2,w3,gvecb,gvecc,gvecd,gvece);
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-    thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
-    thrust::copy(gvecd.begin(), gvecd.end(), pout+2*m*n+1);
-    thrust::copy(gvece.begin(), gvece.end(), pout+3*m*n+1);
 }
 
