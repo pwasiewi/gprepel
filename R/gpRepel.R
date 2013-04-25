@@ -198,7 +198,7 @@ gpRDiffrev <- function(points,w) {
 }
 
 ############################################################################
-# gprup - host-gpu function for one wave and a horizontal line substraction 
+# gpRUp - host-gpu function for one wave and a horizontal line substraction 
 # (negative values are set to 0)
 #
 gpRUp <- function(points,w) {
@@ -222,7 +222,8 @@ gpRUp <- function(points,w) {
 }
 
 ############################################################################
-# gpRDown
+# gpRDown- host-gpu function for a horizontal line and one wave substraction 
+# (negative values are set to 0)
 #
 gpRDown <- function(points,w) {
 	
@@ -245,8 +246,10 @@ gpRDown <- function(points,w) {
 }
 
 ############################################################################
-# gpRSdall
-#
+# gpRSdall- host-gpu function for a squared global average substraction sum 
+# divided by a number of vectors   
+# sqrt((x - globalavg)^2)/N
+# 
 gpRSdall <- function(points) {
 	
 	pkg <- InitPackage()
@@ -268,7 +271,7 @@ gpRSdall <- function(points) {
 
 
 ############################################################################
-# gpRAvgall
+# gpRAvgall - host-gpu function for a global average of all vectors  
 #
 gpRAvgall <- function(points) {
 	
@@ -337,6 +340,9 @@ gpRMeanmax <- function(points,w) {
 }
 
 
+#####################################################################
+# peaks2one
+#
 peaks2one<-function(wavg,wmask,wd=100){
 	nmask=c()
 	ppeaks=which(wmask==1)

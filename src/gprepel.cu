@@ -436,6 +436,107 @@ void gprdown(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout
     thrust::copy(gvecb.begin(), gvecb.end(), pout);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// minus_by - the gpu functor of the wave and the constant value substraction square 
+//
+template<typename T>
+struct  minus_by: public thrust::unary_function<T,T>
+{
+    T w;
+	__host__ __device__
+    minus_by(T w) : w(w) {}
+
+   __host__ __device__
+   T operator()(const T &x) const
+   {
+    return (x - w)*(x - w);
+   }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprsdall - host-gpu function for a squared global average substraction sum 
+// divided by a number of vectors   
+// sqrt((x - globalavg)^2)/N
+// 
+void gprsdall(PNumeric pint, PInteger a, PInteger b, PNumeric pout) {
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    Numeric sumall = thrust::reduce(gveca.begin(), gveca.end())/(a[0]*b[0]);
+    Numeric result = thrust::transform_reduce(gveca.begin(), gveca.end(),
+                                            minus_by<Numeric>(Numeric(sumall)),
+                                            0,
+                                            thrust::plus<Numeric>());
+    pout[0] = sqrt(result/(a[0]*b[0]));
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gpravgall - host-gpu function for a global average of all vectors  
+// 
+void gpravgall(PNumeric pint, PInteger a, PInteger b, PNumeric pout) {
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+	pout[0] = thrust::reduce(gveca.begin(), gveca.end())/(a[0]*b[0]);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// kindcreate - the gpu functor of integer division by a constant m
+//
+struct kindcreate : public thrust::unary_function<Numeric,Numeric>
+{
+    Integer m, n;
+
+    __host__ __device__
+    kindcreate(Integer m, Integer n) : m(m), n(n) {}
+    __host__ __device__
+    Numeric operator()(const Numeric& a) const
+    {
+        //Integer ai=(int) ((int) a) % m;
+        Integer av=(int) ((int) a) / m;
+        //if(a > 0)
+        return (int) av;
+   }
+};
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprmovemax - host-gpu function for 
+//
+void gprmovemax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
+
+    // window size of the moving average
+    //int w = win1[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Integer> vindex(a[0]*b[0]);
+    thrust::sequence(vindex.begin(),vindex.end(),0);
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
+    thrust::transform(vindex.begin(), vindex.end(), gvecb.begin(), kindcreate(Integer(a[0]),Integer(b[0])));
+
+    thrust::equal_to<Numeric> binary_pred;
+    thrust::maximum<Numeric>   binary_op;
+    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gveca.begin(), gvecc.begin(),binary_pred,binary_op);
+    thrust::reverse(gvecc.begin(), gvecc.end());
+    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gvecc.begin(), gveca.begin(),binary_pred,binary_op);
+    thrust::reverse(gveca.begin(), gveca.end());
+
+    // transfer data back to host
+    thrust::copy(gveca.begin(), gveca.end(), pout);
+    //thrust::copy(vindex.begin(), vindex.end(), pout);
+}
+
+
 template <typename T>
 struct is_less_than_zero
 {
@@ -576,95 +677,6 @@ void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
 
 
 
-
-
-
-template<typename T>
-struct  minus_by: public thrust::unary_function<T,T>
-{
-    T w;
-	__host__ __device__
-    minus_by(T w) : w(w) {}
-
-   __host__ __device__
-   T operator()(const T &x) const
-   {
-    return (x - w)*(x - w);
-   }
-};
-
-//template <typename T>
-void gprsdall(PNumeric pint, PInteger a, PInteger b, PNumeric pout) {
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    Numeric sumall = thrust::reduce(gveca.begin(), gveca.end())/(a[0]*b[0]);
-    Numeric result = thrust::transform_reduce(gveca.begin(), gveca.end(),
-                                            minus_by<Numeric>(Numeric(sumall)),
-                                            0,
-                                            thrust::plus<Numeric>());
-    pout[0] = sqrt(result/(a[0]*b[0]));
-}
-
-//template <typename T>
-void gpravgall(PNumeric pint, PInteger a, PInteger b, PNumeric pout) {
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-	pout[0] = thrust::reduce(gveca.begin(), gveca.end())/(a[0]*b[0]);
-}
-
-
-// This functor implements the dot product between 3d vectors
-struct kindcreate : public thrust::unary_function<Numeric,Numeric>
-{
-    Integer m, n;
-
-    __host__ __device__
-    kindcreate(Integer m, Integer n) : m(m), n(n) {}
-    __host__ __device__
-    Numeric operator()(const Numeric& a) const
-    {
-        //Integer ai=(int) ((int) a) % m;
-        Integer av=(int) ((int) a) / m;
-        //if(a > 0)
-        return (int) av;
-   }
-};
-
-
-
-//template <typename T>
-void gprmovemax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
-
-    // window size of the moving average
-    //int w = win1[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Integer> vindex(a[0]*b[0]);
-    thrust::sequence(vindex.begin(),vindex.end(),0);
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
-    thrust::transform(vindex.begin(), vindex.end(), gvecb.begin(), kindcreate(Integer(a[0]),Integer(b[0])));
-
-    thrust::equal_to<Numeric> binary_pred;
-    thrust::maximum<Numeric>   binary_op;
-    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gveca.begin(), gvecc.begin(),binary_pred,binary_op);
-    thrust::reverse(gvecc.begin(), gvecc.end());
-    thrust::inclusive_scan_by_key(gvecb.begin(), gvecb.end(), gvecc.begin(), gveca.begin(),binary_pred,binary_op);
-    thrust::reverse(gveca.begin(), gveca.end());
-
-    // transfer data back to host
-    thrust::copy(gveca.begin(), gveca.end(), pout);
-    //thrust::copy(vindex.begin(), vindex.end(), pout);
-}
 
 template <typename InputVector, typename OutputVector>
 void meanorig(size_t m, size_t n, const InputVector& gveca, OutputVector& vout)
