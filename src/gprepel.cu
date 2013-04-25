@@ -1,18 +1,22 @@
-//#####################################################################
-//##  gpRepel : An R package for GPU computing
-//##
-//##  This program is free software; you can redistribute it and/or modify
-//##  it under the terms of the GNU General Public License as published by
-//##  the Free Software Foundation; version 3 of the License.
-//##
-//##  This program is distributed in the hope that it will be useful,
-//##  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//##  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//##  GNU General Public License for more details.
-//##
-//##  You should have received a copy of the GNU General Public License
-//##  along with this program; if not, write to the Free Software
-//##  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//  gpRepel : An R package for GPU computing
+//
+//  This program is free software; you can redistribute it and/or modify
+//  it under the terms of the GNU General Public License as published by
+//  the Free Software Foundation; version 3 of the License.
+//
+//  This program is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//  GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License
+//  along with this program; if not, write to the Free Software
+//  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+//
+//  Author: Piotr Wąsiewicz pwasiewi@gmail.com
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include <R.h>
 #include "gpRepel.h"
@@ -27,7 +31,7 @@ typedef typename thrust::zip_iterator<NumericIteratorTuple3>       	Numeric3Iter
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // VecReorder - the gpu functor implementing the dot product between 3d vectors
-////////////////////////////////////////////////////////////////////////////////////////////////////
+//
 struct VecReorder : public thrust::binary_function<Numeric2,Numeric2,Numeric>
 {
     Numeric w, maxb;
@@ -52,7 +56,7 @@ struct VecReorder : public thrust::binary_function<Numeric2,Numeric2,Numeric>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // minus_and_divide_zip - gpu functor implementing the dot product between 3d vectors
-////////////////////////////////////////////////////////////////////////////////////////////////////
+//
 struct  minus_and_divide_zip : public thrust::binary_function<Numeric3,Numeric3,Numeric>
 {
     Numeric w, maxb;
@@ -83,7 +87,6 @@ struct  minus_and_divide_zip : public thrust::binary_function<Numeric3,Numeric3,
 // simple_moving_average - GPU function of the simple average with a window w points forward, 
 // after a given point; idata, vout - input and output matrices with m (rows) x n (cols) dimensions,
 // 
-////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename InputVector, typename OutputVector>
 void simple_moving_average(size_t m, size_t n, const InputVector& idata, size_t w, OutputVector& vout)
 {
@@ -121,7 +124,7 @@ void simple_moving_average(size_t m, size_t n, const InputVector& idata, size_t 
 // gprpostmave - host-gpu function for the gpu simple average function simple_moving_average 
 // with a window w points forward, after a given point
 // pint, pout - input and output matrices with a (rows) x b (cols) dimensions
-////////////////////////////////////////////////////////////////////////////////////////////////////
+//
 void gprpostmave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
 
     // window size of the moving average
@@ -143,7 +146,7 @@ void gprpostmave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric p
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // print an array m x n with vectors in columns
-////////////////////////////////////////////////////////////////////////////////////////////////////
+//
 template <typename T>
 void print(size_t m, size_t n, thrust::device_vector<T>& d_data)
 {
@@ -160,7 +163,7 @@ void print(size_t m, size_t n, thrust::device_vector<T>& d_data)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // print an array m x n with vectors in columns as one vector: one after another
-////////////////////////////////////////////////////////////////////////////////////////////////////
+//
 template <typename T>
 void printvec(size_t m, size_t n, thrust::device_vector<T>& d_data)
 {
@@ -171,6 +174,186 @@ void printvec(size_t m, size_t n, thrust::device_vector<T>& d_data)
     std::cout << "\n";
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpremave - host-gpu function for the gpu simple average function simple_moving_average 
+// with a window w points back, before a given point
+// pint, pout - input and output matrices with a (rows) x b (cols) dimensions
+//
+void gprpremave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
+
+    // window size of the moving average
+    size_t w = win[0];
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+
+    thrust::reverse(gveca.begin(), gveca.end());
+    simple_moving_average(m,n,gveca, w, gvecb);
+    thrust::reverse(gvecb.begin(), gvecb.end());
+    thrust::reverse(gveca.begin(), gveca.end());
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpremave - host-gpu function for the gpu average of two moving averages with windows 
+// after and before the given point, joint of gprpremave and gprpostmave
+// pint, pout - input and output matrices with a (rows) x b (cols) dimensions
+//
+void gprmoverage(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
+
+    // window size of the moving average
+    size_t w = win[0];
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecz(a[0]*b[0]);
+    double_moving_average(m,n,gveca,w,gvecz);
+
+    // transfer data back to host
+    thrust::copy(gvecz.begin(), gvecz.end(), pout);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprbasavoff - host-gpu function for a wave average with a small window divided by its baseline 
+// (double average with a large window)
+//
+void gprbasavoff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PInteger win2, PNumeric pout) {
+
+    // window size of the moving average
+    size_t w1 = win1[0];//smaller window
+    size_t w2 = win2[0];//larger window
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
+
+    double_moving_average(m,n,gveca, w1, gvecb);
+    double_moving_average(m,n,gveca, w2, gvecc);
+
+    thrust::transform(gvecb.begin(), gvecb.end(), gvecc.begin(), gvecd.begin(), thrust::divides<Numeric>());
+
+    // transfer data back to host
+    thrust::copy(gvecd.begin(), gvecd.end(), pout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprbasoroff - host-gpu function for a wave divided by its baseline (double average 
+// with a large window)
+//
+void gprbasoroff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
+
+    // window size of the moving average
+    size_t w1 = win1[0];//smaller window
+
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+
+    double_moving_average(m,n,gveca, w1, gvecb);
+
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), gveca.begin(), thrust::divides<Numeric>());
+
+    // transfer data back to host
+    thrust::copy(gveca.begin(), gveca.end(), pout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprdiff - host-gpu function for shifted by the w window one wave copies substraction
+//
+void gprdiff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
+    size_t w = win1[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::transform(gveca.begin()+w, gveca.end(), gveca.begin(), gvecb.begin(), thrust::minus<Numeric>());
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprdiffrev - host-gpu function for shifted by the w window one wave reversed copies substraction
+//
+void gprdiffrev(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
+    size_t w = win1[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::reverse(gveca.begin(), gveca.end());
+    thrust::transform(gveca.begin()+w, gveca.end(), gveca.begin(), gvecb.begin(), thrust::minus<Numeric>());
+    thrust::reverse(gvecb.begin(), gvecb.end());
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// oneup - the gpu functor of constant value substraction, where negative values are set to 0
+//
+template <typename T>
+struct oneup : public thrust::unary_function<T,T>
+{
+    T w;
+	__host__ __device__
+    oneup(T w) : w(w) {}
+
+	__host__ __device__
+    T operator()(const T& a) const
+    {
+    	if(a <= w)
+    		return 0;
+    	else
+    		return a-w;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprup - host-gpu function for one wave and a horizontal line substraction 
+// (negative values are set to 0)
+// 
+void gprup(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout) {
+	Numeric w1 = win1[0];
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), oneup<Numeric>(Numeric(w1)));
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
 
 
 template <typename T>
@@ -349,148 +532,7 @@ void double_moving_average(size_t m, size_t n, const InputVector& igva, size_t w
     thrust::transform(gvc.begin(), gvc.end(), gvb.begin(), gvd.begin(), plus_and_divide<T>(T(2)));
 }
 
-//template <typename T>
-void gprpremave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
 
-    // window size of the moving average
-    size_t w = win[0];
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-
-    thrust::reverse(gveca.begin(), gveca.end());
-    simple_moving_average(m,n,gveca, w, gvecb);
-    thrust::reverse(gvecb.begin(), gvecb.end());
-    thrust::reverse(gveca.begin(), gveca.end());
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-}
-
-//template <typename T>
-void gprmoverage(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
-
-    // window size of the moving average
-    size_t w = win[0];
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecz(a[0]*b[0]);
-    double_moving_average(m,n,gveca,w,gvecz);
-
-    // transfer data back to host
-    thrust::copy(gvecz.begin(), gvecz.end(), pout);
-}
-
-
-//template <typename T>
-void gprbasavoff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PInteger win2, PNumeric pout) {
-
-    // window size of the moving average
-    size_t w1 = win1[0];//smaller window
-    size_t w2 = win2[0];//larger window
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
-    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
-
-    double_moving_average(m,n,gveca, w1, gvecb);
-    double_moving_average(m,n,gveca, w2, gvecc);
-
-    thrust::transform(gvecb.begin(), gvecb.end(), gvecc.begin(), gvecd.begin(), thrust::divides<Numeric>());
-
-    // transfer data back to host
-    thrust::copy(gvecd.begin(), gvecd.end(), pout);
-}
-
-//template <typename T>
-void gprbasoroff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
-
-    // window size of the moving average
-    size_t w1 = win1[0];//smaller window
-
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-
-    double_moving_average(m,n,gveca, w1, gvecb);
-
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), gveca.begin(), thrust::divides<Numeric>());
-
-    // transfer data back to host
-    thrust::copy(gveca.begin(), gveca.end(), pout);
-}
-
-//template <typename T>
-void gprdiff(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
-    size_t w = win1[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::transform(gveca.begin()+w, gveca.end(), gveca.begin(), gvecb.begin(), thrust::minus<Numeric>());
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-}
-
-
-//template <typename T>
-void gprdiffrev(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout) {
-    size_t w = win1[0];//difference window
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::reverse(gveca.begin(), gveca.end());
-    thrust::transform(gveca.begin()+w, gveca.end(), gveca.begin(), gvecb.begin(), thrust::minus<Numeric>());
-    thrust::reverse(gvecb.begin(), gvecb.end());
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-}
-
-
-template <typename T>
-struct oneup : public thrust::unary_function<T,T>
-{
-    T w;
-	__host__ __device__
-    oneup(T w) : w(w) {}
-
-	__host__ __device__
-    T operator()(const T& a) const
-    {
-    	if(a <= w)
-    		return 0;
-    	else
-    		return a-w;
-    }
-};
 
 template <typename T>
 struct onedown : public thrust::unary_function<T,T>
@@ -509,21 +551,6 @@ struct onedown : public thrust::unary_function<T,T>
     }
 };
 
-
-//template <typename T>
-void gprup(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric pout) {
-	Numeric w1 = win1[0];
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-    thrust::transform(gveca.begin(), gveca.end(), gvecb.begin(), oneup<Numeric>(Numeric(w1)));
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
-}
 
 
 //template <typename T>

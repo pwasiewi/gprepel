@@ -2,7 +2,8 @@
 //  gpRepel : An R package for GPU computing
 //  GNU GPL
 //
-
+//  Author: Piotr Wąsiewicz pwasiewi@gmail.com
+//
 #ifndef __gpRepel_H__
 #define __gpRepel_H__
 

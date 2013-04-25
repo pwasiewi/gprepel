@@ -1,4 +1,4 @@
-#####################################################################
+############################################################################
 ##  gpRepel : An R package for GPU computing
 ##
 ##  This program is free software; you can redistribute it and/or modify
@@ -12,10 +12,13 @@
 ##
 ##  You should have received a copy of the GNU General Public License
 ##  along with this program; if not, write to the Free Software
-##  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+##  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA 
+##
+##  Author: Piotr Wąsiewicz pwasiewi@gmail.com
+##
+############################################################################
 
-
-#####################################################################
+############################################################################
 # InitPackage
 #
 InitPackage <- function() {
@@ -23,7 +26,7 @@ InitPackage <- function() {
 }
 
 
-#####################################################################
+############################################################################
 # gpRPostmave - the simple average: window w points forward, 
 # after a given point
 #
@@ -49,8 +52,9 @@ gpRPostmave <- function(points,w) {
 
 
 
-#####################################################################
-# gpRPremave
+############################################################################
+# gpRPremave- the simple average: window w points back, 
+# before a given point
 #
 gpRPremave <- function(points,w) {
 
@@ -72,8 +76,9 @@ gpRPremave <- function(points,w) {
     return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRMoverage
+############################################################################
+# gpRMoverage - average of two moving averages with windows 
+# after and before the given point, joint of gprpremave and gprpostmave
 #
 gpRMoverage <- function(points,w) {
 
@@ -95,8 +100,9 @@ gpRMoverage <- function(points,w) {
     return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRBasavoff
+############################################################################
+# gpRBasavoff - function for a wave average with a small window 
+# divided by its baseline (double average with a large window)
 #
 gpRBasavoff <- function(points,w1,w2) {
 
@@ -119,8 +125,9 @@ gpRBasavoff <- function(points,w1,w2) {
     return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRBasoroff
+############################################################################
+# gpRBasoroff - function for a wave divided by its baseline (double average 
+# with a large window)
 #
 gpRBasoroff <- function(points,w1) {
 	
@@ -142,8 +149,9 @@ gpRBasoroff <- function(points,w1) {
 	return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRDiff
+############################################################################
+# gpRDiff - host-gpu function for shifted by the w window 
+# one wave copies substraction
 #
 gpRDiff <- function(points,w) {
 
@@ -165,8 +173,9 @@ gpRDiff <- function(points,w) {
     return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRDiffrev
+############################################################################
+# gpRDiffrev - host-gpu function for shifted by the w window one wave 
+# reversed copies substraction
 #
 gpRDiffrev <- function(points,w) {
 	
@@ -188,8 +197,9 @@ gpRDiffrev <- function(points,w) {
 	return (matrix(d,num,dim))
 }
 
-#####################################################################
-# gpRUp
+############################################################################
+# gprup - host-gpu function for one wave and a horizontal line substraction 
+# (negative values are set to 0)
 #
 gpRUp <- function(points,w) {
 	
@@ -211,7 +221,7 @@ gpRUp <- function(points,w) {
 	return (matrix(d,num,dim))
 }
 
-#####################################################################
+############################################################################
 # gpRDown
 #
 gpRDown <- function(points,w) {
@@ -234,7 +244,7 @@ gpRDown <- function(points,w) {
 	return (matrix(d,num,dim))
 }
 
-#####################################################################
+############################################################################
 # gpRSdall
 #
 gpRSdall <- function(points) {
@@ -257,7 +267,7 @@ gpRSdall <- function(points) {
 }
 
 
-#####################################################################
+############################################################################
 # gpRAvgall
 #
 gpRAvgall <- function(points) {
@@ -279,7 +289,7 @@ gpRAvgall <- function(points) {
 	return (d)
 }
 
-#####################################################################
+############################################################################
 # gpRMovemax
 #
 gpRMovemax <- function(points,w) {
@@ -303,7 +313,7 @@ gpRMovemax <- function(points,w) {
 }
 
 
-#####################################################################
+############################################################################
 # gpRMeanmax
 #
 gpRMeanmax <- function(points,w) {
