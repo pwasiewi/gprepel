@@ -1,23 +1,42 @@
 ////////////////////////////////////////////////////////////////////////
-//  gpRepel : An R packge for GPU computing
+//  gpRepel : An R package for GPU computing
 //  GNU GPL
 //
 
 #ifndef __gpRepel_H__
 #define __gpRepel_H__
 
+#include <thrust/iterator/permutation_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/functional.h>
+#include <thrust/generate.h>
+#include <thrust/sequence.h>
+#include <thrust/gather.h>
+#include <thrust/scan.h>
+#include <thrust/fill.h>
+#include <thrust/sort.h>
+#include <thrust/copy.h>
+#include <ostream>
+#include <cstdlib>
+#include <iostream>
+#include <iomanip>
+
 #ifdef __cplusplus
 extern "C"
 {
-#endif 
+#endif
 
 #include "inc/gpRtypes.h"
+
 
 
 ////////////////////////////////////////////////////////////////////////
 // getDevice
 //
-// @param device            Device Id of the GPU in use by the current thread
+// @param device   Device Id of the GPU in use by the current thread
 //
 
 

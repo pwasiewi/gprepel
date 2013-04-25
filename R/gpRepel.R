@@ -24,7 +24,8 @@ InitPackage <- function() {
 
 
 #####################################################################
-# gpRPostmave
+# gpRPostmave - the simple average: window w points forward, 
+# after a given point
 #
 gpRPostmave <- function(points,w) {
 

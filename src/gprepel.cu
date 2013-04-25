@@ -16,29 +16,6 @@
 
 #include <R.h>
 #include "gpRepel.h"
-#include "inc/gpRbase.h"
-/*
-#include <cusp/print.h>
-#include <cusp/array2d.h>
-#include <cusp/multiply.h>
-*/
-#include <thrust/iterator/permutation_iterator.h>
-#include <thrust/iterator/transform_iterator.h>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <thrust/functional.h>
-#include <thrust/generate.h>
-#include <thrust/sequence.h>
-#include <thrust/gather.h>
-#include <thrust/scan.h>
-#include <thrust/fill.h>
-#include <thrust/sort.h>
-#include <thrust/copy.h>
-#include <ostream>
-#include <cstdlib>
-#include <iostream>
-#include <iomanip>
 
 typedef thrust::tuple<Numeric,Numeric> 								Numeric2;
 typedef typename thrust::device_vector<Numeric>::iterator         	NumericIterator;
@@ -47,6 +24,154 @@ typedef typename thrust::zip_iterator<NumericIteratorTuple>       	Numeric2Itera
 typedef thrust::tuple<Numeric,Numeric,Numeric> 						Numeric3;
 typedef typename thrust::tuple<NumericIterator, NumericIterator, NumericIterator>  NumericIteratorTuple3;
 typedef typename thrust::zip_iterator<NumericIteratorTuple3>       	Numeric3Iterator;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// VecReorder - the gpu functor implementing the dot product between 3d vectors
+////////////////////////////////////////////////////////////////////////////////////////////////////
+struct VecReorder : public thrust::binary_function<Numeric2,Numeric2,Numeric>
+{
+    Numeric w, maxb;
+    Numeric ai,bi,av,bv, result;
+
+    __host__ __device__
+    VecReorder(Numeric w, Numeric maxb) : w(w), maxb(maxb) {}
+    __host__ __device__
+        Numeric operator()(const Numeric2& a, const Numeric2& b) const
+        {
+            Numeric ai=(int) thrust::get<0>(a) % (int) maxb;
+            Numeric av=thrust::get<1>(a);
+            Numeric bi=(int) thrust::get<0>(b) % (int) maxb;
+            Numeric bv=thrust::get<1>(b);
+	    	int lastone = (int) maxb*((int) thrust::get<0>(a) / (int) maxb)-1;
+	    	if(ai > bi)
+            	return thrust::get<0>(a);
+	    	else
+	    		return lastone;
+        }
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// minus_and_divide_zip - gpu functor implementing the dot product between 3d vectors
+////////////////////////////////////////////////////////////////////////////////////////////////////
+struct  minus_and_divide_zip : public thrust::binary_function<Numeric3,Numeric3,Numeric>
+{
+    Numeric w, maxb;
+    Numeric ai,bi,av,bv, result;
+
+    __host__ __device__
+    minus_and_divide_zip(Numeric w, Numeric maxb) : w(w), maxb(maxb) {}
+    __host__ __device__
+    Numeric operator()(const Numeric3& a, const Numeric3& b) const
+    {
+		Numeric ai=(int) thrust::get<0>(a) % (int) maxb;
+		Numeric av=thrust::get<1>(a);
+		Numeric bi=(int) thrust::get<0>(b) % (int) maxb;
+		Numeric bv=thrust::get<1>(b);
+	    int lastone = (int) maxb*((int) thrust::get<0>(a) / (int) maxb);
+	    if(ai > bi)
+                return (av - bv)/w;
+	    else
+	    	if((int)w - 1 != (int) ai)
+	    		return (thrust::get<2>(b) - thrust::get<1>(b)) / ((int)w - (int)ai -1);
+	    	else
+	    		return 0;
+    }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// simple_moving_average - GPU function of the simple average with a window w points forward, 
+// after a given point; idata, vout - input and output matrices with m (rows) x n (cols) dimensions,
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename InputVector, typename OutputVector>
+void simple_moving_average(size_t m, size_t n, const InputVector& idata, size_t w, OutputVector& vout)
+{
+    typedef typename InputVector::value_type T;
+
+    if (idata.size() < w)
+        return;
+    thrust::device_vector<size_t> output(m*n);
+    thrust::device_vector<Numeric> voutput(m*n);
+    thrust::device_vector<Numeric> data(m*n);
+    thrust::device_vector<Numeric> vindex(m*n);
+    thrust::sequence(vindex.begin(),vindex.end());
+
+    thrust::inclusive_scan(idata.begin(), idata.end(), data.begin());
+
+    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin(), data.begin()));
+    Numeric2Iterator firstw = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin() + w, data.begin() + w));
+    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(vindex.end(),   data.end()));
+
+    thrust::transform(firstw, last, first, output.begin(), VecReorder(w,m));
+ 
+    thrust::gather(output.begin(), output.end(), data.begin(), voutput.begin());
+
+    Numeric3Iterator first3 = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin(), data.begin(), voutput.begin()));
+    Numeric3Iterator firstw3 = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin() + w, data.begin() + w, voutput.begin() + w));
+    Numeric3Iterator last3  = thrust::make_zip_iterator(thrust::make_tuple(vindex.end(), data.end(), voutput.end()));
+
+    thrust::transform(firstw3, last3, first3, vout.begin(), minus_and_divide_zip(w,m));
+    thrust::fill(vout.end()-w,vout.end(),vout[vout.size()-w-1]);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpostmave - host-gpu function for the gpu simple average function simple_moving_average 
+// with a window w points forward, after a given point
+// pint, pout - input and output matrices with a (rows) x b (cols) dimensions
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void gprpostmave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
+
+    // window size of the moving average
+    size_t w = win[0];
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
+    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
+
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+
+    simple_moving_average(m,n,gveca, w, gvecb);
+
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// print an array m x n with vectors in columns
+////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename T>
+void print(size_t m, size_t n, thrust::device_vector<T>& d_data)
+{
+    thrust::host_vector<T> h_data = d_data;
+
+    for(size_t i = 0; i < n; i++)
+    {
+        for(size_t j = 0; j < m; j++)
+            std::cout << " " << h_data[j + i * m] << " ";
+        std::cout << "\n";
+    }
+    std::cout << "\n";
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// print an array m x n with vectors in columns as one vector: one after another
+////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename T>
+void printvec(size_t m, size_t n, thrust::device_vector<T>& d_data)
+{
+    thrust::host_vector<T> h_data = d_data;
+
+    for(size_t i = 0; i < m*n; i++)
+        std::cout << setw(4) << h_data[i] << " ";
+    std::cout << "\n";
+}
+
+
 
 template <typename T>
 struct is_less_than_zero
@@ -190,33 +315,8 @@ void scan_horizontally(size_t m, size_t n, thrust::device_vector<T>& d_data)
                                   d_data.begin());
 }
 
-// print an M-by-N array
-template <typename T>
-void print(size_t m, size_t n, thrust::device_vector<T>& d_data)
-{
-    thrust::host_vector<T> h_data = d_data;
 
-    for(size_t i = 0; i < m; i++)
-    {
-        for(size_t j = 0; j < n; j++)
-            std::cout << std::setw(8) << h_data[i + j * m] << " ";
-        std::cout << "\n";
-    }
-    std::cout << "\n";
-}
 
-// print an M-by-N array
-template <typename T>
-void printvec(size_t m, size_t n, thrust::device_vector<T>& d_data)
-{
-    thrust::host_vector<T> h_data = d_data;
-
-    std::cout << "\n";
-    for(size_t i = 0; i < m*n; i++)
-        std::cout << std::setw(8) << h_data[i] << " ";
-    std::cout << "\n";
-    std::cout << "\n";
-}
 
 template <typename T>
 void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
@@ -224,87 +324,9 @@ void sumvec(thrust::device_vector<T>& gvec, Numeric& out)
     thrust::reduce(gvec.begin(), gvec.end(), out);
 }
 
-// This functor implements the dot product between 3d vectors
-struct VecReorder : public thrust::binary_function<Numeric2,Numeric2,Numeric>
-{
-    Numeric w, maxb;
-    Numeric ai,bi,av,bv, result;
 
-    __host__ __device__
-    VecReorder(Numeric w, Numeric maxb) : w(w), maxb(maxb) {}
-    __host__ __device__
-        Numeric operator()(const Numeric2& a, const Numeric2& b) const
-        {
-            Numeric ai=(int) thrust::get<0>(a) % (int) maxb;
-            Numeric av=thrust::get<1>(a);
-            Numeric bi=(int) thrust::get<0>(b) % (int) maxb;
-            Numeric bv=thrust::get<1>(b);
-	    int lastone = (int) maxb*((int) thrust::get<0>(a) / (int) maxb)-1;
-	    if(ai > bi)
-            return thrust::get<0>(a);
-	    else
-	    return lastone;
-        }
-};
 
-// This functor implements the dot product between 3d vectors
-struct  minus_and_divide_zip : public thrust::binary_function<Numeric3,Numeric3,Numeric>
-{
-    Numeric w, maxb;
-    Numeric ai,bi,av,bv, result;
 
-    __host__ __device__
-    minus_and_divide_zip(Numeric w, Numeric maxb) : w(w), maxb(maxb) {}
-    __host__ __device__
-    Numeric operator()(const Numeric3& a, const Numeric3& b) const
-    {
-		Numeric ai=(int) thrust::get<0>(a) % (int) maxb;
-		Numeric av=thrust::get<1>(a);
-		Numeric bi=(int) thrust::get<0>(b) % (int) maxb;
-		Numeric bv=thrust::get<1>(b);
-	    int lastone = (int) maxb*((int) thrust::get<0>(a) / (int) maxb);
-	    if(ai > bi)
-                return (thrust::get<1>(a) - thrust::get<1>(b))/w;
-	    else
-	    	if((int)w - 1 != (int)thrust::get<0>(a) % (int)maxb)
-	    		return (thrust::get<2>(b) - thrust::get<1>(b)) / ((int)w - (int)thrust::get<0>(a) % (int)maxb -1);
-	    	else
-	    		return 0;
-	    		//return  ((thrust::get<2>(a)-thrust::get<1>(a))+(thrust::get<2>(b)-thrust::get<1>(b)))/w;
-	    		//return  (thrust::get<2>(b)-thrust::get<1>(b))/w;
-    }
-};
-
-template <typename InputVector, typename OutputVector>
-void simple_moving_average(size_t m, size_t n, const InputVector& idata, size_t w, OutputVector& vout)
-{
-    typedef typename InputVector::value_type T;
-
-    if (idata.size() < w)
-        return;
-    thrust::device_vector<size_t> output(m*n);
-    thrust::device_vector<Numeric> voutput(m*n);
-    thrust::device_vector<Numeric> data(m*n);
-    thrust::device_vector<Numeric> vindex(m*n);
-    thrust::sequence(vindex.begin(),vindex.end());
-
-    thrust::inclusive_scan(idata.begin(), idata.end(), data.begin());
-
-    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin(), data.begin()));
-    Numeric2Iterator firstw = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin() + w, data.begin() + w));
-    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(vindex.end(),   data.end()));
-
-    thrust::transform(firstw, last, first, output.begin(), VecReorder(w,m));
- 
-    thrust::gather(output.begin(), output.end(), data.begin(), voutput.begin());
-
-    Numeric3Iterator first3 = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin(), data.begin(), voutput.begin()));
-    Numeric3Iterator firstw3 = thrust::make_zip_iterator(thrust::make_tuple(vindex.begin() + w, data.begin() + w, voutput.begin() + w));
-    Numeric3Iterator last3  = thrust::make_zip_iterator(thrust::make_tuple(vindex.end(), data.end(), voutput.end()));
-
-    thrust::transform(firstw3, last3, first3, vout.begin(), minus_and_divide_zip(w,m));
-    thrust::fill(vout.end()-w,vout.end(),vout[vout.size()-w-1]);
-}
 
 
 template <typename InputVector, typename OutputVector>
@@ -325,27 +347,6 @@ void double_moving_average(size_t m, size_t n, const InputVector& igva, size_t w
     thrust::reverse(gvc.begin(), gvc.end());
     thrust::reverse(gva.begin(), gva.end());
     thrust::transform(gvc.begin(), gvc.end(), gvb.begin(), gvd.begin(), plus_and_divide<T>(T(2)));
-}
-
-
-//template <typename T>
-void gprpostmave(PNumeric pint, PInteger a, PInteger b, PInteger win, PNumeric pout) {
-
-    // window size of the moving average
-    size_t w = win[0];
-    size_t m = a[0];//row number
-    size_t n = b[0];//column number
-
-    // transfer data to the device
-    thrust::device_vector<Numeric> gveca(a[0]*b[0]);
-    thrust::copy(pint,pint+a[0]*b[0],gveca.begin());
-
-    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
-
-    simple_moving_average(m,n,gveca, w, gvecb);
-
-    // transfer data back to host
-    thrust::copy(gvecb.begin(), gvecb.end(), pout);
 }
 
 //template <typename T>
