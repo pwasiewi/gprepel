@@ -172,7 +172,8 @@ void printvec(size_t m, size_t n, thrust::device_vector<T>& d_data)
     thrust::host_vector<T> h_data = d_data;
 
     for(size_t i = 0; i < m*n; i++)
-        std::cout << fixed << setw(5) << setprecision(2) << h_data[i] << " ";
+        //std::cout << fixed << setw(5) << setprecision(2) << h_data[i] << " ";
+        std::cout << " " << h_data[i] << " ";
     std::cout << "\n";
 }
 

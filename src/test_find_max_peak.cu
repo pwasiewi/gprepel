@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //  gpRepel : An R package for GPU computing - testing the moving average function
-//  COMPILE: nvcc -arch sm_11 test_simple_moving_average.cu
+//  COMPILE: nvcc -arch sm_11 test_*.cu
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
