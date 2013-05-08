@@ -318,7 +318,8 @@ gpRMovemax <- function(points,w) {
 
 
 ############################################################################
-# gpRMeanmax
+# gpRMeanmax - host-gpu function for the divided by m wave mean 
+# without baseline  
 #
 gpRMeanmax <- function(points,w) {
 	
@@ -438,3 +439,39 @@ peaks2one<-function(wavg,wmask,wd=100){
 	wmask
 }
 
+
+#####################################################################
+# gpRPeak2maskopt
+#
+gpRPeak2maskopt <- function(points,w1=45,w2=250,w3=15,wgap=100) {
+	
+	pkg <- InitPackage()
+	
+	matoutnum<-6
+	
+	points <- as.matrix(points)
+	num <- nrow(points)
+	dim <- ncol(points)
+	
+	d <- .C("gprpeak2maskopt",
+			as.single(points),
+			as.integer(num),
+			as.integer(dim),
+			as.single(w1),
+			as.single(w2),
+			as.single(w3),
+			d = single(matoutnum*num*dim),
+			NAOK = TRUE,
+			PACKAGE = pkg)$d
+	
+	llmat=matrix(d,num,matoutnum*dim)
+	pmask   = llmat[,1:dim]
+	pavg = llmat[,(dim+1):(2*dim)]
+	pint = llmat[,(2*dim+1):(3*dim)]
+	dmask = llmat[,(3*dim+1):(4*dim)]
+	davg = llmat[,(4*dim+1):(5*dim)]
+	dint = llmat[,(5*dim+1):(6*dim)]
+	for(i in 1:dim)	pmask[,i]<-peaks2one(pavg[,i],pmask[,i],wgap)
+	for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
+	return (list(pmask=pmask, pavg=pavg, pint=pint, dmask=dmask, davg=davg, dint=dint))
+}
