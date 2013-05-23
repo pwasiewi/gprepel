@@ -12,7 +12,7 @@ LIBS :=  -L/opt/cuda/lib64 -lcublas -lcuda
 
 TARGETS := gpRepel.so
 
-CC := /opt/cuda/bin/nvcc -D _gpRepel_
+CC := /opt/cuda/bin/nvcc -D _gpRepel_ --pre-include gcc_cuda_compat.h
 
 all: $(TARGETS) 
 
