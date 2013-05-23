@@ -80,6 +80,8 @@ void gprpeak2mask(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric
 
 void gprpeak2maskopt(PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric win3, PNumeric pout);
 
+void gprpeaklambda2mask(PNumeric lint, PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric win3, PNumeric pout);
+
 void gprmeanmax(PNumeric pint, PInteger a, PInteger b, PInteger win1, PNumeric pout);
 
 #ifdef __cplusplus
