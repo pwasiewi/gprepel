@@ -7,7 +7,7 @@ INCS := -I/opt/cuda/include -arch sm_11
 PARAMS := -Xcompiler "-I/usr/lib64/R/include -fpic"
 
 #linker options
-LD_PARAMS := -Xlinker "-L/usr/lib64/R/lib -lR -Wl,-rpath,/opt/cuda/lib64"
+LD_PARAMS := -Xlinker "-L/usr/lib64/R/lib -lR ,-rpath,/opt/cuda/lib64"
 LIBS :=  -L/opt/cuda/lib64 -lcublas -lcuda
 
 TARGETS := gpRepel.so
