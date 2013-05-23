@@ -3,7 +3,7 @@ EXT := cu
 OBJS := gprepel.o
 
 #compiler/preprocessor options
-INCS := -I@CUDA_HOME@/include -arch sm_11
+INCS := -I@CUDA_HOME@/include -arch sm_11 --pre-include gcc_cuda_compat.h
 PARAMS := -Xcompiler "@R_INCLUDE@ @CPICFLAGS@"
 
 #linker options
