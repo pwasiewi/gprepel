@@ -1136,7 +1136,6 @@ void lambda_peak_sums(size_t m, size_t n, const InputVector& ldiff, const InputV
 
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // find_doublemaxpeaks_lambda - a gpu function for 
 //
@@ -1251,6 +1250,165 @@ void gprpeaklambda2mask(PNumeric lint, PNumeric pint, PInteger a, PInteger b, PN
     thrust::copy(gvece.begin(), gvece.end(), pout+3*m*n+1);
     thrust::copy(gvecf.begin(), gvecf.end(), pout+4*m*n+1);
     thrust::copy(gvecg.begin(), gvecg.end(), pout+5*m*n+1);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// half_peak_width
+// 
+template <typename InputVector, typename OutputVector>
+void half_peak_width(size_t m, size_t n, const InputVector& ldiff, const InputVector& idata, OutputVector& data)
+{
+  typedef typename InputVector::value_type T;
+
+  thrust::device_vector<Numeric> peakmask(m*n);
+  thrust::transform(idata.begin(), idata.end(), peakmask.begin(), mask01<Numeric>(Integer(0)));
+  //max for peakmask
+  thrust::equal_to<Numeric> binary_pred;
+  thrust::maximum<Numeric>  binary_max;
+  thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), idata.begin(), data.begin(),binary_pred,binary_max);
+  thrust::reverse(data.begin(), data.end());
+  thrust::reverse(peakmask.begin(), peakmask.end());
+  thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), data.begin(), data.begin(),binary_pred,binary_max);
+  thrust::reverse(data.begin(), data.end());
+  thrust::device_vector<Numeric> halfdata(m*n);
+  thrust::fill(halfdata.begin(),halfdata.end(),2);
+  thrust::transform(data.begin(), data.end(), halfdata.begin(), data.begin(), thrust::divides<Numeric>());
+  //minus half max
+  thrust::transform(idata.begin(), idata.end(), data.begin(), halfdata.begin(), thrust::minus<Numeric>());
+  thrust::transform(halfdata.begin(), halfdata.end(), peakmask.begin(), mask01<Numeric>(Integer(0)));
+  thrust::plus<Numeric>  binary_plus;
+  //width in mask
+  thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), ldiff.begin(), data.begin(),binary_pred,binary_plus);
+  thrust::reverse(data.begin(), data.end());
+  thrust::reverse(peakmask.begin(), peakmask.end());
+  thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), data.begin(), data.begin(),binary_pred,binary_max);
+  thrust::reverse(data.begin(), data.end());
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// find_doublemaxpeaks_lambdahalf - a gpu function for 
+//
+template <typename InputVector, typename OutputVector>
+void find_doublemaxpeaks_lambdahalf(size_t m, size_t n, const InputVector& lambda, const InputVector& idata, const Numeric& w1, const Numeric& w2, const Numeric& w3, 
+OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVector& halfwp, OutputVector& dout, OutputVector& avgbasoffd, OutputVector& pintegrald, OutputVector& halfwd)
+{
+	thrust::device_vector<Numeric> ldiff(m*n);
+	thrust::transform(lambda.begin()+1, lambda.end(), lambda.begin(), ldiff.begin(), thrust::minus<Numeric>());
+
+	thrust::device_vector<Numeric> orgbasoffp(m*n);
+	thrust::device_vector<Numeric> orgbasoffd(m*n);
+
+    thrust::device_vector<Numeric> data(m*n);
+    thrust::device_vector<Numeric> data2(m*n);
+
+    double_moving_average(m,n,idata, w2, data2);
+    thrust::transform(idata.begin(), idata.end(), data2.begin(), data.begin(), thrust::divides<Numeric>());
+
+    //original peaks up and down
+    thrust::transform(data.begin(), data.end(), orgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
+    thrust::transform(data.begin(), data.end(), orgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
+
+    thrust::equal_to<Numeric> binary_pred;
+    thrust::maximum<Numeric>  binary_max;
+ 
+    double_moving_average(m,n,idata, w1, data);
+    thrust::transform(data.begin(), data.end(), data2.begin(), data.begin(), thrust::divides<Numeric>());
+	//average peaks up and down
+    thrust::transform(data.begin(), data.end(), avgbasoffp.begin(), oneup<Numeric>(Numeric(1)));
+    thrust::transform(data.begin(), data.end(), avgbasoffd.begin(), onedown<Numeric>(Numeric(1)));
+
+	//the same number within each vector
+    thrust::device_vector<Integer> vindex(m*n);
+    thrust::sequence(vindex.begin(),vindex.end(),0);
+    thrust::transform(vindex.begin(), vindex.end(), vindex.begin(), kindcreate(Integer(m),Integer(n)));
+
+    //orgbasoffp, avgbasoffp
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffp.begin(), data.begin(), binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(data.begin(), data.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), data.begin(), data2.begin(),binary_pred,binary_max);
+    thrust::reverse(data2.begin(), data2.end());
+    thrust::fill(data.begin(),data.end(),m/(NAVG/w1));
+    thrust::transform(data2.begin(), data2.end(), data.begin(), data2.begin(), thrust::divides<Numeric>());
+
+    Numeric2Iterator first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.begin(), data2.begin()));
+    Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.end(),   data2.end()));
+
+    thrust::transform(first, last, data.begin(), zipup());
+
+    thrust::transform(data.begin()+1, data.end(), data.begin(), pout.begin(), thrust::minus<Numeric>());
+    double_moving_average(m,n,pout, w3, data2);
+
+    Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
+    Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
+    Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
+
+    thrust::transform(first0, last0, first1, pout.begin(), compare_zip());
+
+    //orgbasoffd, avgbasoffd
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), orgbasoffd.begin(), data.begin(), binary_pred,thrust::plus<Numeric>());
+    thrust::reverse(data.begin(), data.end());
+    thrust::inclusive_scan_by_key(vindex.begin(), vindex.end(), data.begin(), data2.begin(),binary_pred,binary_max);
+    thrust::reverse(data2.begin(), data2.end());
+    thrust::fill(data.begin(),data.end(),m/(NAVG/w1));
+    thrust::transform(data2.begin(), data2.end(), data.begin(), data2.begin(), thrust::divides<Numeric>());
+
+    first = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.begin(), data2.begin()));
+    last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.end(),   data2.end()));
+
+    thrust::transform(first, last, data.begin(), zipup());
+
+    thrust::transform(data.begin()+1, data.end(), data.begin(), dout.begin(), thrust::minus<Numeric>());
+    double_moving_average(m,n,dout, w3, data2);
+
+    first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
+    first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
+    last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
+    
+    thrust::transform(first0, last0, first1, dout.begin(), compare_zip());
+    lambda_peak_sums(m, n, ldiff, avgbasoffp, pintegralp);
+    lambda_peak_sums(m, n, ldiff, avgbasoffd, pintegrald);
+    half_peak_width(m, n, ldiff, avgbasoffp, halfwp);
+    half_peak_width(m, n, ldiff, avgbasoffd, halfwd);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// gprpeaklambda2halfmask - the host-gpu function for 
+//
+void gprpeaklambda2halfmask(PNumeric lint, PNumeric pint, PInteger a, PInteger b, PNumeric win1, PNumeric win2, PNumeric win3, PNumeric pout) {
+    size_t m = a[0];//row number
+    size_t n = b[0];//column number
+    int w1 = win1[0];//window
+    int w2 = win2[0];//baseline window
+    int w3 = win3[0];//difference window
+
+    // transfer data to the device
+    thrust::device_vector<Numeric> lambda(lint,lint+a[0]*b[0]);
+    thrust::device_vector<Numeric> gveca(pint,pint+a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecb(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecc(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecd(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvece(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecf(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvecg(a[0]*b[0]);
+    thrust::device_vector<Numeric> gvech(a[0]*b[0]);
+    thrust::device_vector<Numeric> gveci(a[0]*b[0]);
+    
+    find_doublemaxpeaks_lambdahalf(m,n,lambda,gveca,w1,w2,w3,gvecb,gvecc,gvecd,gvece,gvecf,gvecg,gvech,gveci);
+    // transfer data back to host
+    thrust::copy(gvecb.begin(), gvecb.end(), pout);
+    thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
+    thrust::copy(gvecd.begin(), gvecd.end(), pout+2*m*n+1);
+    thrust::copy(gvece.begin(), gvece.end(), pout+3*m*n+1);
+    thrust::copy(gvecf.begin(), gvecf.end(), pout+4*m*n+1);
+    thrust::copy(gvecg.begin(), gvecg.end(), pout+5*m*n+1);
+    thrust::copy(gvech.begin(), gvech.end(), pout+6*m*n+1);
+    thrust::copy(gveci.begin(), gveci.end(), pout+7*m*n+1);
 }
 
 

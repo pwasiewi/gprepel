@@ -3,6 +3,7 @@ useDynLib(gpRepel)
 export(
     gpRPeakmask,
     gpRPeaklambda2mask,
+    gpRPeaklambda2halfmask,
     gpRPeak2maskopt,
     gpRPeak2mask,
     peaks2one,
