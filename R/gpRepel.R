@@ -475,3 +475,43 @@ gpRPeak2maskopt <- function(points,w1=45,w2=250,w3=15,wgap=100) {
 	for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
 	return (list(pmask=pmask, pavg=pavg, pint=pint, dmask=dmask, davg=davg, dint=dint))
 }
+
+
+#####################################################################
+# gpRPeaklambda2mask
+#
+gpRPeaklambda2mask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100) {
+	
+	pkg <- InitPackage()
+	
+	matoutnum<-6
+	
+	lambda <- as.matrix(lambda)
+	points <- as.matrix(points)
+	num <- nrow(points)
+	dim <- ncol(points)
+	
+	
+	d <- .C("gprpeaklambda2mask",
+			as.single(lambda),
+			as.single(points),
+			as.integer(num),
+			as.integer(dim),
+			as.single(w1),
+			as.single(w2),
+			as.single(w3),
+			d = single(matoutnum*num*dim),
+			NAOK = TRUE,
+			PACKAGE = pkg)$d
+	
+	llmat=matrix(d,num,matoutnum*dim)
+	pmask   = llmat[,1:dim]
+	pavg = llmat[,(dim+1):(2*dim)]
+	pint = llmat[,(2*dim+1):(3*dim)]
+	dmask = llmat[,(3*dim+1):(4*dim)]
+	davg = llmat[,(4*dim+1):(5*dim)]
+	dint = llmat[,(5*dim+1):(6*dim)]
+	for(i in 1:dim)	pmask[,i]<-peaks2one(pavg[,i],pmask[,i],wgap)
+	for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
+	return (list(pmask=pmask, pavg=pavg, pint=pint, dmask=dmask, davg=davg, dint=dint))
+}
