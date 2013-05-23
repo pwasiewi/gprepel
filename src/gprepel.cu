@@ -1116,19 +1116,15 @@ void lambda_peak_sums(size_t m, size_t n, const InputVector& ldiff, const InputV
   thrust::device_vector<Numeric> sdata(m*n);
 
   thrust::transform(idata.begin(), idata.end(), peakmask.begin(), mask01<Numeric>(Integer(0)));
-  //thrust::device_vector<Numeric> peakbase(peakmask.begin(), peakmask.end());
-  //thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), peakbase.begin(),peakbase.begin());
   thrust::transform(ldiff.begin(), ldiff.end(), idata.begin(), sdata.begin(), thrust::multiplies<Numeric>());  
   thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), sdata.begin(),data.begin());
-  //thrust::reverse(peakbase.begin(), peakbase.end());
   thrust::reverse(data.begin(), data.end());
   thrust::reverse(peakmask.begin(), peakmask.end());
   thrust::equal_to<Numeric> binary_pred;
   thrust::maximum<Numeric>  binary_max;
   thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), data.begin(), data.begin(),binary_pred,binary_max);
-  //thrust::inclusive_scan_by_key(peakmask.begin(), peakmask.end(), peakbase.begin(), peakbase.begin(),binary_pred,binary_max);
-  //thrust::reverse(peakbase.begin(), peakbase.end());
   thrust::reverse(data.begin(), data.end());
+  
   //thrust::transform(peakbase.begin(), peakbase.end(), peakbase.begin(), tone<Numeric>(Integer(0)));
   //cout << "data of peakbase:" << endl;
   //printvec(1,NDATA,peakbase); 

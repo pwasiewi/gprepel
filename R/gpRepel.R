@@ -548,7 +548,7 @@ gpRPeaklambda2halfmask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100) {
 	pmask   = llmat[,1:dim]
 	pavg = llmat[,(dim+1):(2*dim)]
 	pint = llmat[,(2*dim+1):(3*dim)]
-	phalf = llmat[,(2*dim+1):(3*dim)]
+	phalf = llmat[,(3*dim+1):(4*dim)]
 	dmask = llmat[,(4*dim+1):(5*dim)]
 	davg = llmat[,(5*dim+1):(6*dim)]
 	dint = llmat[,(6*dim+1):(7*dim)]
