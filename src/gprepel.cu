@@ -1382,6 +1382,7 @@ void gprpeaklambda2halfmask(PNumeric lint, PNumeric pint, PInteger a, PInteger b
     int w1 = win1[0];//window
     int w2 = win2[0];//baseline window
     int w3 = win3[0];//difference window
+	int navg0 = navg[0];
 
     // transfer data to the device
     thrust::device_vector<Numeric> lambda(lint,lint+a[0]*b[0]);
@@ -1395,7 +1396,7 @@ void gprpeaklambda2halfmask(PNumeric lint, PNumeric pint, PInteger a, PInteger b
     thrust::device_vector<Numeric> gvech(a[0]*b[0]);
     thrust::device_vector<Numeric> gveci(a[0]*b[0]);
     
-    find_doublemaxpeaks_lambdahalf(m,n,lambda,gveca,w1,w2,w3,gvecb,gvecc,gvecd,gvece,gvecf,gvecg,gvech,gveci,navg);
+    find_doublemaxpeaks_lambdahalf(m,n,lambda,gveca,w1,w2,w3,gvecb,gvecc,gvecd,gvece,gvecf,gvecg,gvech,gveci,navg0);
     // transfer data back to host
     thrust::copy(gvecb.begin(), gvecb.end(), pout);
     thrust::copy(gvecc.begin(), gvecc.end(), pout+m*n+1);
