@@ -520,7 +520,7 @@ gpRPeaklambda2mask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100) {
 #####################################################################
 # gpRPeaklambda2halfmask
 #
-gpRPeaklambda2halfmask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100) {
+gpRPeaklambda2halfmask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100,navg=80) {
 	
 	pkg <- InitPackage()
 	
@@ -541,6 +541,7 @@ gpRPeaklambda2halfmask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100) {
 			as.single(w2),
 			as.single(w3),
 			d = single(matoutnum*num*dim),
+			as.integer(navg),
 			NAOK = TRUE,
 			PACKAGE = pkg)$d
 	
