@@ -1338,7 +1338,7 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
 	//double_moving_average(m,n,data, w3, pout);
 
     thrust::transform(pout.begin()+1, pout.end(), pout.begin(), data.begin(), thrust::minus<Numeric>());
-thrust::copy(pout.begin(), pout.end(), pintegralp.begin());    
+thrust::copy(data.begin(), data.end(), pintegralp.begin());    
     Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
     Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
     Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
