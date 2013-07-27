@@ -414,7 +414,7 @@ gpRPeak2mask <- function(points,w1=45,w2=250,w3=15,wgap=100) {
 peaks2one<-function(wavg,wmask,wd=100){
 	nmask=c()
 	ppeaks=which(wmask==1)
-	if(length(ppeaks) >= 2){
+	if(length(ppeaks) >= 8){
 		pdiff<-ppeaks[2:length(ppeaks)]-ppeaks[1:length(ppeaks)-1]
 		if(length(which(pdiff<wd))>0){
 			pgood<-ppeaks[-c(which(pdiff<wd)+1)]
