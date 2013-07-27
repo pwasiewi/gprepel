@@ -1336,6 +1336,7 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
     thrust::transform(first, last, data.begin(), zipup());
 
 	double_moving_average(m,n,data, w3, pout);
+thrust::copy(pout.begin(), pout.end(), avgbasoffp);
     thrust::transform(pout.begin()+1, pout.end(), pout.begin(), data.begin(), thrust::minus<Numeric>());
     
     Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
@@ -1358,6 +1359,7 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
     thrust::transform(first, last, data.begin(), zipup());
 
     double_moving_average(m,n,data, w3, dout);
+thrust::copy(dout.begin(), dout.end(), avgbasoffd);
     thrust::transform(dout.begin()+1, dout.end(), dout.begin(), data.begin(), thrust::minus<Numeric>());
 
     first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
@@ -1365,10 +1367,10 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
     last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
     
     thrust::transform(first0, last0, first1, dout.begin(), compare_zip());
-    lambda_peak_sums(m, n, ldiff, avgbasoffp, pintegralp);
-    lambda_peak_sums(m, n, ldiff, avgbasoffd, pintegrald);
-    half_peak_width(m, n, ldiff, avgbasoffp, halfwp);
-    half_peak_width(m, n, ldiff, avgbasoffd, halfwd);
+    //lambda_peak_sums(m, n, ldiff, avgbasoffp, pintegralp);
+    //lambda_peak_sums(m, n, ldiff, avgbasoffd, pintegrald);
+    //half_peak_width(m, n, ldiff, avgbasoffp, halfwp);
+    //half_peak_width(m, n, ldiff, avgbasoffd, halfwd);
 }
 
 
