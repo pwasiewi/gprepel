@@ -1335,9 +1335,9 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
 
     thrust::transform(first, last, data.begin(), zipup());
 
-    thrust::transform(data.begin()+1, data.end(), data.begin(), pout.begin(), thrust::minus<Numeric>());
-    double_moving_average(m,n,pout, w3, data2);
-
+	double_moving_average(m,n,data, w3, pout);
+    thrust::transform(pout.begin()+1, pout.end(), pout.begin(), data.begin(), thrust::minus<Numeric>());
+    
     Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
     Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
     Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
@@ -1357,8 +1357,8 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
 
     thrust::transform(first, last, data.begin(), zipup());
 
-    thrust::transform(data.begin()+1, data.end(), data.begin(), dout.begin(), thrust::minus<Numeric>());
-    double_moving_average(m,n,dout, w3, data2);
+    double_moving_average(m,n,data, w3, dout);
+    thrust::transform(dout.begin()+1, dout.end(), dout.begin(), data.begin(), thrust::minus<Numeric>());
 
     first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
     first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
