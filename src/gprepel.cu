@@ -1335,7 +1335,7 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
 
     thrust::transform(first, last, data.begin(), zipup());
 thrust::copy(data.begin(), data.end(), avgbasoffp.begin());
-	double_moving_average(m,n,data, w3, pout);
+	simple_moving_average(m,n,data, w3, pout);
 thrust::copy(pout.begin(), pout.end(), halfwp.begin());  
     thrust::transform(pout.begin()+1, pout.end(), pout.begin(), data.begin(), thrust::minus<Numeric>());
 thrust::copy(data.begin(), data.end(), pintegralp.begin());    
@@ -1358,7 +1358,7 @@ thrust::copy(data.begin(), data.end(), pintegralp.begin());
 
     thrust::transform(first, last, data.begin(), zipup());
 thrust::copy(data.begin(), data.end(), avgbasoffd.begin());
-    double_moving_average(m,n,data, w3, dout);
+    simple_moving_average(m,n,data, w3, dout);
 thrust::copy(dout.begin(), dout.end(), halfwd.begin());
     thrust::transform(dout.begin()+1, dout.end(), dout.begin(), data.begin(), thrust::minus<Numeric>());
 thrust::copy(data.begin(), data.end(), pintegrald.begin());
