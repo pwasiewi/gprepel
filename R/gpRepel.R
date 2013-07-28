@@ -554,7 +554,7 @@ gpRPeaklambda2halfmask <- function(lambda,points,w1=45,w2=250,w3=15,wgap=100,nav
 	davg = llmat[,(5*dim+1):(6*dim)]
 	dint = llmat[,(6*dim+1):(7*dim)]
 	dhalf = llmat[,(7*dim+1):(8*dim)]
-	#for(i in 1:dim)	pmask[,i]<-peaks2one(pavg[,i],pmask[,i],wgap)
-	#for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
+	for(i in 1:dim)	pmask[,i]<-peaks2one(pavg[,i],pmask[,i],wgap)
+	for(i in 1:dim)	dmask[,i]<-peaks2one(davg[,i],dmask[,i],wgap)
 	return (list(pmask=pmask, pavg=pavg, pint=pint, phalf=phalf, dmask=dmask, davg=davg, dint=dint, dhalf=dhalf))
 }

@@ -1334,11 +1334,11 @@ OutputVector& pout, OutputVector& avgbasoffp, OutputVector& pintegralp, OutputVe
     Numeric2Iterator last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffp.end(),   data2.end()));
 
     thrust::transform(first, last, data.begin(), zipup());
-thrust::copy(data.begin(), data.end(), avgbasoffp.begin());
+//thrust::copy(data.begin(), data.end(), avgbasoffp.begin());
 	simple_moving_average(m,n,data, w3, pout);
-thrust::copy(pout.begin(), pout.end(), halfwp.begin());  
+//thrust::copy(pout.begin(), pout.end(), halfwp.begin());  
     thrust::transform(pout.begin()+1, pout.end(), pout.begin(), data2.begin(), thrust::minus<Numeric>());
-thrust::copy(data2.begin(), data2.end(), pintegralp.begin());    
+//thrust::copy(data2.begin(), data2.end(), pintegralp.begin());    
     Numeric2Iterator first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
     Numeric2Iterator first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
     Numeric2Iterator last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
@@ -1357,20 +1357,20 @@ thrust::copy(data2.begin(), data2.end(), pintegralp.begin());
     last  = thrust::make_zip_iterator(thrust::make_tuple(avgbasoffd.end(),   data2.end()));
 
     thrust::transform(first, last, data.begin(), zipup());
-thrust::copy(data.begin(), data.end(), avgbasoffd.begin());
+//thrust::copy(data.begin(), data.end(), avgbasoffd.begin());
     simple_moving_average(m,n,data, w3, dout);
-thrust::copy(dout.begin(), dout.end(), halfwd.begin());
+//thrust::copy(dout.begin(), dout.end(), halfwd.begin());
     thrust::transform(dout.begin()+1, dout.end(), dout.begin(), data2.begin(), thrust::minus<Numeric>());
-thrust::copy(data2.begin(), data2.end(), pintegrald.begin());
+//thrust::copy(data2.begin(), data2.end(), pintegrald.begin());
     first0 = thrust::make_zip_iterator(thrust::make_tuple(data.begin(), data2.begin()));
     first1 = thrust::make_zip_iterator(thrust::make_tuple(data.begin() + 1, data2.begin() + 1));
     last0  = thrust::make_zip_iterator(thrust::make_tuple(data.end(),  data2.end()));
     
     thrust::transform(first0, last0, first1, dout.begin(), compare_zip());
-    //lambda_peak_sums(m, n, ldiff, avgbasoffp, pintegralp);
-    //lambda_peak_sums(m, n, ldiff, avgbasoffd, pintegrald);
-    //half_peak_width(m, n, ldiff, avgbasoffp, halfwp);
-    //half_peak_width(m, n, ldiff, avgbasoffd, halfwd);
+    lambda_peak_sums(m, n, ldiff, avgbasoffp, pintegralp);
+    lambda_peak_sums(m, n, ldiff, avgbasoffd, pintegrald);
+    half_peak_width(m, n, ldiff, avgbasoffp, halfwp);
+    half_peak_width(m, n, ldiff, avgbasoffd, halfwd);
 }
 
 
